@@ -1,5 +1,5 @@
 import { db } from '../../server/db.js';
-import { verifyFacultyToken } from '../../server/faculty.js';
+import { verifyFacultyToken, getDepartmentAliases } from '../../server/faculty.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'DELETE') {
@@ -25,6 +25,11 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ success: false, message: 'Student ID is required.' });
     }
 
+    if (decoded.dept !== 'ALL') {
+      const permitted = await db.listStudents({ branch: getDepartmentAliases(decoded.dept) });
+      if (!permitted.some(s => s.id === id)) return res.status(403).json({ success: false, message: 'Student is outside your department.' });
+    }
+
     // Call the delete method from your db class
     const deleted = await db.deleteStudent(id); 
     
@@ -34,6 +39,7 @@ export default async function handler(req: any, res: any) {
       return res.status(404).json({ success: false, message: 'Student not found.' });
     }
   } catch (error: any) {
+    if (error.code === '23503') return res.status(409).json({ success: false, message: 'This student has placement applications and cannot be deleted.' });
     console.error('Delete Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to delete student.' });
   }

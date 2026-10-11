@@ -14,6 +14,8 @@ function extractSession(req: any): { dept: string } | null {
 }
 
 export default async function handler(req: any, res: any) {
+  if (req.method !== 'GET') return res.status(405).json({ success: false, message: 'Method not allowed.' });
+  res.setHeader('Cache-Control', 'no-store');
   const session = extractSession(req);
   if (!session) {
     return res.status(401).json({ success: false, message: 'Unauthorized. Please log in to faculty portal.' });
@@ -32,6 +34,7 @@ export default async function handler(req: any, res: any) {
   try {
     const students = await db.listStudents({
       branch: targetBranches,
+      yop: typeof req.query.yop === 'string' ? req.query.yop : undefined,
       search: typeof search === 'string' && search ? search : undefined,
     });
 
