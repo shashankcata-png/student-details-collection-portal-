@@ -6,7 +6,19 @@ export interface Queryable { query(sql: string, values?: any[]): Promise<{ rows:
 export class TpoStore {
   constructor(private sql: Queryable) {}
   async opportunities(): Promise<TpoOpportunity[]> {
-    return (await this.sql.query('SELECT * FROM public.tpo_opportunities ORDER BY created_at DESC')).rows;
+    try {
+      return (await this.sql.query('SELECT * FROM public.tpo_opportunities ORDER BY created_at DESC')).rows;
+    } catch (error: any) {
+      if (error?.code === '42P01') {
+        const target = new URL(process.env.DATABASE_URL!);
+        console.error('TPO schema missing', {
+          host: target.hostname, database: target.pathname,
+          project: target.username.startsWith('postgres.') ? target.username.slice(9) : undefined,
+          relation: 'public.tpo_opportunities',
+        });
+      }
+      throw error;
+    }
   }
   async opportunity(id: string): Promise<TpoOpportunity | undefined> {
     return (await this.sql.query('SELECT * FROM public.tpo_opportunities WHERE id = $1', [id])).rows[0];
