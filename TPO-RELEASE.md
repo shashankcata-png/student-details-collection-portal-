@@ -1,6 +1,6 @@
 # TPO release handoff
 
-Status: implemented locally, not deployed. Production student data has not been modified.
+Status: implementation published on `codex/tpo-applications` in draft PR #2. Local tests, type checks and production build passed; Vercel preview verification is pending. Not released to production. Production student data has not been modified.
 
 ## Implemented
 
@@ -27,7 +27,7 @@ Build, type checks and tests passed locally. Live email delivery, browser end-to
 
 ## Required before release
 
-1. Connect GitHub write access to `shashankcata-png/student-details-collection-portal-`. The branch is `codex/tpo-applications`. Clone/read works; the push dry run failed because GitHub authentication is unavailable.
+1. GitHub publication completed through the owner-authorized shared browser. Draft PR: https://github.com/shashankcata-png/student-details-collection-portal-/pull/2 . All 23 implementation files were fetched and compared byte-for-byte with the locally tested tree. Keep the PR in draft until the following release checks are complete.
 2. In Vercel, configure private faculty credentials directly as Secrets. Never commit or paste credentials in chat. `FACULTY_PASSWORD` is an admin-only password of at least 12 characters. `FACULTY_DEPARTMENT_PASSWORDS` is a JSON object mapping department codes to different passwords of at least 12 characters. Configure only departments that should have access. Existing department codes are in `server/faculty.ts`. An existing `FACULTY_JWT_SECRET` is present in production, but its value/length was not read. Use a random secret of at least 32 characters and rotate it for this release to invalidate old sessions. **Deploying without these values prevents faculty sign-in.**
 3. Verify a database backup can restore into an isolated environment. A count of 618 students was observed; this is not a backup. No backup restoration has been performed. Keep backup files private and outside this public repository.
 4. Configure a separate staging database, OTP settings and faculty secrets for the feature branch's Preview environment. Production `DATABASE_URL` must not be used for tests. No Supabase development branch currently exists; paid provisioning has not been authorized.
