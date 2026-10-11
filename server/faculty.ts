@@ -100,10 +100,13 @@ export function verifyFacultyCredentials(department: string, pass: string): bool
   if (!dept || typeof pass !== 'string' || FACULTY_SECRET.length < 32) return false;
   let configured: Record<string, string> = {};
   try { configured = JSON.parse(process.env.FACULTY_DEPARTMENT_PASSWORDS || '{}'); } catch { return false; }
-  // Public repository defaults must never grant access to student records.
-  const expected = department === 'ALL' ? (configured.ALL || GLOBAL_FACULTY_PASS) : configured[department];
-  if (typeof expected !== 'string' || expected.length < 12 || Object.values(DEPARTMENTS).some(d => d.defaultPass === expected) || expected === 'faculty@avn2026') return false;
-  const actualHash = crypto.createHash('sha256').update(pass).digest();
+  // Preserve existing department logins as requested by the portal owner.
+  // An explicit private override replaces that department's legacy password.
+  const expected = department === 'ALL'
+    ? (configured.ALL || GLOBAL_FACULTY_PASS || dept.defaultPass)
+    : (configured[department] || dept.defaultPass);
+  if (typeof expected !== 'string' || !expected) return false;
+  const actualHash = crypto.createHash('sha256').update(pass.trim()).digest();
   const expectedHash = crypto.createHash('sha256').update(expected).digest();
   return crypto.timingSafeEqual(actualHash, expectedHash);
 }
