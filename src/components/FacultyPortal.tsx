@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { StudentRecord } from '../types/student';
 import { CollegeBanner } from './CollegeBanner';
+import { FacultyTpoPanel } from './FacultyTpoPanel';
 
 interface FacultyPortalProps {
   onBackToStudentForm: () => void;
@@ -173,11 +174,11 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
       pan_number: student.pan_number,
       passport_number: student.passport_number,
       tenth_cgpa: student.tenth_cgpa,
-      tenth_yop: student.tenth_yop, // Included 10th YOP
+      tenth_year_of_passing: student.tenth_year_of_passing, // Included 10th YOP
       intermediate_or_diploma: student.intermediate_or_diploma,
       intermediate_cgpa: student.intermediate_cgpa,
       diploma_cgpa: student.diploma_cgpa,
-      inter_yop: student.inter_yop, // Included Inter YOP
+      intermediate_year_of_passing: student.intermediate_year_of_passing, // Included Inter YOP
       cgpa: student.cgpa,
       percentage: student.percentage,
       active_backlogs: student.active_backlogs,
@@ -270,7 +271,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     setIsExporting(true);
     try {
       const params = new URLSearchParams();
-      params.append('token', token);
+      // Session is sent in the authorization header.
       if (facultyDept === 'ALL' && selectedAdminBranch !== 'ALL') {
         params.append('branch', selectedAdminBranch);
       }
@@ -282,7 +283,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
       }
 
       const exportUrl = `/api/faculty/export?${params.toString()}`;
-      const response = await fetch(exportUrl);
+      const response = await fetch(exportUrl, { headers: { Authorization: `Bearer ${token}` } });
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -464,6 +465,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
   return (
     <div className="max-w-6xl mx-auto my-6 px-4 relative">
       <CollegeBanner />
+      <FacultyTpoPanel token={token} department={facultyDept} />
       <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-hidden mb-6">
         <div className="h-2.5 bg-blue-700 w-full" />
         <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -854,7 +856,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                       <label className="block text-sm font-medium text-gray-700 mb-1">10th Details</label>
                       <div className="flex gap-2">
                         <input type="number" step="0.01" placeholder="CGPA" value={editFormData.tenth_cgpa || ''} onChange={e => setEditFormData({...editFormData, tenth_cgpa: parseFloat(e.target.value)})} className="w-1/2 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
-                        <input type="text" placeholder="YOP" value={editFormData.tenth_yop || ''} onChange={e => setEditFormData({...editFormData, tenth_yop: e.target.value})} className="w-1/2 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                        <input type="text" placeholder="YOP" value={editFormData.tenth_year_of_passing || ''} onChange={e => setEditFormData({...editFormData, tenth_year_of_passing: e.target.value})} className="w-1/2 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
                       </div>
                     </div>
                     
@@ -881,7 +883,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                       </div>
                       <div className="w-1/3">
                         <label className="block text-sm font-medium text-gray-700 mb-1">YOP</label>
-                        <input type="text" placeholder="YOP" value={editFormData.inter_yop || ''} onChange={e => setEditFormData({...editFormData, inter_yop: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                        <input type="text" placeholder="YOP" value={editFormData.intermediate_year_of_passing || ''} onChange={e => setEditFormData({...editFormData, intermediate_year_of_passing: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
                       </div>
                     </div>
 

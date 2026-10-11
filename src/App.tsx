@@ -6,6 +6,7 @@ import { ContactVerificationSection } from './components/ContactVerificationSect
 import { AcademicDetailsSection } from './components/AcademicDetailsSection';
 import { SuccessView } from './components/SuccessView';
 import { FacultyPortal } from './components/FacultyPortal';
+import { TpoPortal } from './components/TpoPortal';
 import { StudentFormData, SubmitResponse } from './types/student';
 import { validateStudentForm, ValidationErrors } from './lib/validation';
 
@@ -50,7 +51,7 @@ const INITIAL_FORM_DATA: StudentFormData = {
 };
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'student' | 'faculty'>('student');
+  const [currentView, setCurrentView] = useState<'student' | 'faculty' | 'tpo'>('student');
   const [formData, setFormData] = useState<StudentFormData>(INITIAL_FORM_DATA);
   const [verificationToken, setVerificationToken] = useState<string>('');
   const [isEmailVerified, setIsEmailVerified] = useState<boolean>(false);
@@ -238,6 +239,10 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  if (currentView === 'tpo') {
+    return <div className="min-h-screen bg-[#f0f4f8] p-4 sm:p-8"><main className="max-w-4xl mx-auto"><CollegeBanner /><TpoPortal onBack={() => setCurrentView('student')} /></main></div>;
+  }
+
   if (currentView === 'faculty') {
     return (
       <div className="min-h-screen bg-[#f0f4f8] py-6 sm:py-10 px-3 sm:px-4">
@@ -269,6 +274,11 @@ export default function App() {
           systemStatus={systemStatus}
           onOpenFacultyPortal={() => setCurrentView('faculty')}
         />
+
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div><p className="font-semibold text-blue-950">Placement opportunities</p><p className="text-sm text-blue-800">Registered students can apply and check their TPO application status.</p></div>
+          <button type="button" onClick={() => setCurrentView('tpo')} className="bg-blue-700 text-white rounded-md px-4 py-2 text-sm font-semibold">Open TPO Applications</button>
+        </div>
 
         {generalError && (
           <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2.5">

@@ -22,5 +22,21 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "server/**/*.ts",
+    "api/**/*.ts",
+    "server.ts",
+    "vite.config.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/components/server.ts",
+    "src/components/db.ts",
+    "src/components/students.ts"
+  ]
 }

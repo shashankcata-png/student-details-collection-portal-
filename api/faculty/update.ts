@@ -1,5 +1,5 @@
 import { db } from '../../server/db.js';
-import { verifyFacultyToken } from '../../server/faculty.js';
+import { verifyFacultyToken, getDepartmentAliases } from '../../server/faculty.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'PUT' && req.method !== 'PATCH') {
@@ -26,6 +26,14 @@ export default async function handler(req: any, res: any) {
 
     if (!id || !updates) {
       return res.status(400).json({ success: false, message: 'Student ID and updates are required.' });
+    }
+
+    if (decoded.dept !== 'ALL') {
+      const aliases = getDepartmentAliases(decoded.dept);
+      const permitted = await db.listStudents({ branch: aliases });
+      if (!permitted.some(s => s.id === id) || (updates.branch !== undefined && !aliases.includes(updates.branch))) {
+        return res.status(403).json({ success: false, message: 'Student is outside your department.' });
+      }
     }
 
     // 3. SAFETY STRIP: If this is a soft delete or purely a status change, 
