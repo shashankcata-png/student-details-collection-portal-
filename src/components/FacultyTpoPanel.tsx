@@ -14,7 +14,7 @@ export function FacultyTpoPanel({ token, department }: { token: string; departme
   const [customTemplate, setCustomTemplate] = useState<CustomTemplate | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({ title: '', template: 'SE', deadline: '', gapBeforeLabel: '', gapDuringLabel: '', diplomaAllowed: false });
-  useEffect(() => { tpoRequest('opportunities').then(d => setOpportunities(d.opportunities)).catch(e => setError(e.message)); }, []);
+  useEffect(() => { tpoRequest('managedOpportunities', token).then(d => setOpportunities(d.opportunities)).catch(e => setError(e.message)); }, [token]);
   async function run(fn: () => Promise<void>) { setBusy(true); setError(''); try { await fn(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } }
   async function load(id = selected) {
     const r = await fetch(`/api/tpo?action=applications&opportunityId=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -43,11 +43,20 @@ export function FacultyTpoPanel({ token, department }: { token: string; departme
         <button className={button}>Open opportunity</button>
       </fieldset>
     </form>}
-    <div className="flex flex-wrap gap-3"><label className="text-sm">Opportunity<select className={`${input} block`} disabled={busy} value={selected} onChange={e => { setSelected(e.target.value); setApplications([]); setBranch(''); setYop(''); setStatus(''); if (e.target.value) run(() => load(e.target.value)); }}><option value="">Select opportunity</option>{opportunities.map(o => <option key={o.id} value={o.id}>{o.title} ({o.custom_template ? 'Custom' : o.template})</option>)}</select></label>
+    <div className="flex flex-wrap gap-3"><label className="text-sm">Opportunity<select className={`${input} block`} disabled={busy} value={selected} onChange={e => { setSelected(e.target.value); setApplications([]); setBranch(''); setYop(''); setStatus(''); if (e.target.value) run(() => load(e.target.value)); }}><option value="">Select opportunity</option>{opportunities.map(o => <option key={o.id} value={o.id}>{o.title} ({o.custom_template ? 'Custom' : o.template}){o.archived_at ? ' — Deleted' : ''}</option>)}</select></label>
       <label className="text-sm">Status<select className={`${input} block`} value={status} onChange={e => setStatus(e.target.value)}><option value="">All statuses</option>{['Submitted', 'Needs Correction', 'Verified'].map(s => <option key={s}>{s}</option>)}</select></label>
       <label className="text-sm">Branch<select className={`${input} block`} value={branch} onChange={e => setBranch(e.target.value)}><option value="">All permitted branches</option>{[...new Set(applications.map(a => a.snapshot.branch))].sort().map(s => <option key={s}>{s}</option>)}</select></label>
       <label className="text-sm">Graduation year<select className={`${input} block`} value={yop} onChange={e => setYop(e.target.value)}><option value="">All years</option>{[...new Set(applications.map(a => a.snapshot.yop).filter(Boolean))].sort().map(s => <option key={s}>{s}</option>)}</select></label>
     </div>
+    {selected && department === 'ALL' && <div className="rounded border p-3 text-sm space-y-2">
+      <p>{opportunities.find(o => o.id === selected)?.archived_at ? 'Deleted: hidden from students. Saved applications remain available below. Restore makes it visible again; the original deadline still applies.' : 'Delete hides this opportunity from students and stops new submissions. Saved applications and exports are retained.'}</p>
+      <button type="button" disabled={busy} className={button} onClick={() => run(async () => {
+        const archived = !!opportunities.find(o => o.id === selected)?.archived_at;
+        if (!window.confirm(archived ? 'Restore this opportunity to the student list?' : 'Delete this opportunity from the student list? Existing applications will be retained.')) return;
+        const d = await tpoRequest(archived ? 'restore' : 'archive', token, { id: selected }, 'PATCH');
+        setOpportunities(prev => prev.map(o => o.id === selected ? d.opportunity : o));
+      })}>{opportunities.find(o => o.id === selected)?.archived_at ? 'Restore opportunity' : 'Delete opportunity'}</button>
+    </div>}
     {selected && <><p className="text-sm">{matching.length} applications · {verified} verified and ready for export. Downloads include verified applications matching branch and year, regardless of the status view.</p>
       <div className="flex gap-3"><button disabled={busy} className={button} onClick={() => run(() => load())}>Refresh</button><button disabled={busy || !verified} className={button} onClick={() => run(async () => {
         const params = new URLSearchParams({ action: 'export', opportunityId: selected, branch, yop });
