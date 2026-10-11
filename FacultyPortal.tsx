@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { StudentRecord } from '../types/student';
 import { CollegeBanner } from './CollegeBanner';
+import { FacultyTpoPanel } from './FacultyTpoPanel';
 
 interface FacultyPortalProps {
   onBackToStudentForm: () => void;
@@ -29,12 +30,12 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
-  const requestVersion = useRef(0);
-  const deleteInProgress = useRef(false);
+  // Edit Modal State
+  const [editingStudent, setEditingStudent] = useState<StudentRecord | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<StudentRecord>>({});
+  const [isUpdating, setIsUpdating] = useState<boolean>(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -42,7 +43,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
   const [selectedAdminBranch, setSelectedAdminBranch] = useState<string>('ALL');
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
-  // Fetch departments list for login
   useEffect(() => {
     fetch('/api/faculty/departments')
       .then((res) => res.json())
@@ -54,10 +54,8 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
       .catch(() => {});
   }, []);
 
-  // Fetch students when authenticated
   const fetchStudents = async () => {
     if (!token) return;
-    const version = ++requestVersion.current;
     setIsLoadingStudents(true);
     setLoadError(null);
 
@@ -74,30 +72,25 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
       }
 
       const res = await fetch(`/api/faculty/students?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (version !== requestVersion.current) return;
       if (res.status === 401) {
-        // Token expired
         handleLogout();
         setLoginError('Session expired. Please log in again.');
         return;
       }
 
       const data = await res.json();
-      if (version !== requestVersion.current) return;
       if (res.ok && data.success) {
         setStudents(data.students || []);
       } else {
         setLoadError(data.message || 'Failed to load students.');
       }
     } catch {
-      if (version === requestVersion.current) setLoadError('Network error while retrieving students.');
+      setLoadError('Network error while retrieving students.');
     } finally {
-      if (version === requestVersion.current) setIsLoadingStudents(false);
+      setIsLoadingStudents(false);
     }
   };
 
@@ -107,7 +100,105 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     }
   }, [token, selectedAdminBranch, selectedYop]);
 
-  // Handle Login
+  const handleDeleteStudent = async (id: string, rollNumber: string) => {
+    if (!window.confirm(`WARNING: Are you sure you want to delete the record for ${rollNumber}? This action cannot be undone.`)) {
+      return;
+    }
+
+    setIsDeleting(id);
+    try {
+      const res = await fetch('/api/faculty/delete', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setStudents((prev) => prev.filter((s) => s.id !== id));
+      } else {
+        alert(data.message || 'Failed to delete student.');
+      }
+    } catch (err) {
+      alert('Network error while deleting student. Please try again.');
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  const handleUpdateStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+    
+    setIsUpdating(true);
+    try {
+      const res = await fetch('/api/faculty/update', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: editingStudent.id, updates: editFormData }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setStudents((prev) => prev.map((s) => (s.id === editingStudent.id ? { ...s, ...data.student } : s)));
+        setEditingStudent(null);
+        alert('Student details updated successfully!');
+      } else {
+        alert(data.message || 'Failed to update student details.');
+      }
+    } catch (err) {
+      alert('Network error while updating details. Please try again.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const openEditModal = (student: StudentRecord) => {
+    setEditingStudent(student);
+    setEditFormData({
+      first_name: student.first_name,
+      last_name: student.last_name,
+      roll_number: student.roll_number,
+      branch: student.branch,
+      other_branch: student.other_branch,
+      college: student.college,
+      date_of_birth: student.date_of_birth,
+      gender: student.gender,
+      aadhar_number: student.aadhar_number,
+      pan_number: student.pan_number,
+      passport_number: student.passport_number,
+      tenth_cgpa: student.tenth_cgpa,
+      tenth_percentage: student.tenth_percentage,
+      tenth_year_of_passing: student.tenth_year_of_passing,
+      intermediate_or_diploma: student.intermediate_or_diploma,
+      intermediate_cgpa: student.intermediate_cgpa,
+      intermediate_percentage: student.intermediate_percentage,
+      diploma_cgpa: student.diploma_cgpa,
+      diploma_percentage: student.diploma_percentage,
+      intermediate_year_of_passing: student.intermediate_year_of_passing,
+      cgpa: student.cgpa,
+      percentage: student.percentage,
+      active_backlogs: student.active_backlogs,
+      btech_year_of_passing: student.btech_year_of_passing,
+      crt_registration: student.crt_registration,
+      email: student.email,
+      mobile_number: student.mobile_number,
+      linkedin_link: student.linkedin_link,
+      resume_link: student.resume_link,
+      github_link: student.github_link,
+      hackerrank_link: student.hackerrank_link,
+      leetcode_link: student.leetcode_link,
+      codechef_link: student.codechef_link,
+      codeforces_link: student.codeforces_link,
+    });
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -144,12 +235,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     }
   };
 
-  // Handle Logout
   const handleLogout = () => {
-    requestVersion.current += 1;
-    setIsLoadingStudents(false);
-    setDeleteError(null);
-    setDeleteMessage(null);
     setToken('');
     setFacultyDept('');
     setFacultyDeptName('');
@@ -159,45 +245,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     setStudents([]);
   };
 
-  const handleDeleteStudent = async (student: StudentRecord) => {
-    if (deleteInProgress.current) return;
-    const confirmed = window.confirm(
-      `Delete ${student.full_name} (${student.roll_number})?\n\nThis permanently removes this student registration. This cannot be undone.`
-    );
-    if (!confirmed) return;
-    deleteInProgress.current = true;
-    setDeletingId(student.id);
-    setDeleteError(null);
-    setDeleteMessage(null);
-    try {
-      const response = await fetch('/api/faculty/students', {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: student.id }),
-      });
-      if (response.status === 401) {
-        handleLogout();
-        setLoginError('Session expired. Please log in again.');
-        return;
-      }
-      const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.success) {
-        setDeleteError(data?.message || 'Could not delete the student. Please try again.');
-        return;
-      }
-      requestVersion.current += 1;
-      setIsLoadingStudents(false);
-      setStudents((current) => current.filter((item) => item.id !== student.id));
-      setDeleteMessage(`Deleted registration for ${student.full_name} (${student.roll_number}).`);
-    } catch {
-      setDeleteError('Unable to confirm deletion. Refresh the records before trying again.');
-    } finally {
-      deleteInProgress.current = false;
-      setDeletingId(null);
-    }
-  };
-
-  // Filtered students for client-side search instant reactivity
   const filteredStudents = useMemo(() => {
     let result = students;
     if (selectedYop !== 'ALL') {
@@ -207,16 +254,16 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(
         (s) =>
-          s.full_name.toLowerCase().includes(q) ||
-          s.roll_number.toLowerCase().includes(q) ||
-          s.email.toLowerCase().includes(q) ||
-          s.mobile_number.includes(q)
+          (s.first_name && s.first_name.toLowerCase().includes(q)) ||
+          (s.last_name && s.last_name.toLowerCase().includes(q)) ||
+          (s.roll_number && s.roll_number.toLowerCase().includes(q)) ||
+          (s.email && s.email.toLowerCase().includes(q)) ||
+          (s.mobile_number && s.mobile_number.includes(q))
       );
     }
     return result;
   }, [students, selectedYop, searchQuery]);
 
-  // Department statistics
   const stats = useMemo(() => {
     const total = filteredStudents.length;
     if (total === 0) {
@@ -230,13 +277,11 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     return { total, avgCgpa, zeroBacklogs, activeBacklogsCount };
   }, [filteredStudents]);
 
-  // Export to Excel (.xlsx)
   const handleExportToExcel = async () => {
     setIsExporting(true);
     try {
-      // Direct download via server API
       const params = new URLSearchParams();
-      params.append('token', token);
+      // Session is sent in the authorization header.
       if (facultyDept === 'ALL' && selectedAdminBranch !== 'ALL') {
         params.append('branch', selectedAdminBranch);
       }
@@ -248,9 +293,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
       }
 
       const exportUrl = `/api/faculty/export?${params.toString()}`;
-
-      // Trigger browser download via fetch blob for maximum reliability
-      const response = await fetch(exportUrl);
+      const response = await fetch(exportUrl, { headers: { Authorization: `Bearer ${token}` } });
       if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -263,7 +306,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
         a.remove();
         window.URL.revokeObjectURL(url);
       } else {
-        // Client-side fallback using installed xlsx library
         clientSideExcelExport();
       }
     } catch {
@@ -273,12 +315,13 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     }
   };
 
-  // Client-side Excel export fallback
   const clientSideExcelExport = () => {
     const exportData = filteredStudents.map((s, idx) => ({
       'S.No': idx + 1,
       'Roll Number / Hall Ticket': s.roll_number,
-      'Full Name': s.full_name,
+      'Full Name': `${s.first_name || ''} ${s.last_name || ''}`.trim() || '-',
+      'First Name': s.first_name || '-',
+      'Last Name': s.last_name || '-',
       'Department / Branch': s.branch === 'Other' && s.other_branch ? `${s.branch} (${s.other_branch})` : s.branch,
       'Academic Session': '2026–2027',
       'College / Institution': s.college,
@@ -299,22 +342,9 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     worksheet['!cols'] = [
-      { wch: 6 },
-      { wch: 18 },
-      { wch: 25 },
-      { wch: 20 },
-      { wch: 18 }, // Academic Session
-      { wch: 14 },
-      { wch: 35 },
-      { wch: 28 },
-      { wch: 16 },
-      { wch: 14 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 22 },
-      { wch: 36 },
+      { wch: 6 }, { wch: 18 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 18 },
+      { wch: 35 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 10 },
+      { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 36 },
     ];
 
     const workbook = XLSX.utils.book_new();
@@ -323,15 +353,12 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     XLSX.writeFile(workbook, `AVN_Students_${sheetTitle}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // RENDER: LOGIN SCREEN IF NOT AUTHENTICATED
   if (!token) {
     return (
       <div className="max-w-4xl mx-auto my-6 sm:my-8 px-4">
         <CollegeBanner />
         <div className="max-w-xl mx-auto bg-white rounded-lg border border-gray-200 shadow-xs overflow-hidden">
-          {/* Top Blue Accent Bar */}
           <div className="h-2.5 bg-blue-700 w-full" />
-
           <div className="p-6 sm:p-8">
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-semibold uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-1 rounded border border-blue-100">
@@ -376,7 +403,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
             )}
 
             <form onSubmit={handleLogin} className="mt-6 space-y-4">
-              {/* Department Selector */}
               <div>
                 <label htmlFor="deptSelect" className="block text-sm font-medium text-gray-700 mb-1">
                   Select Department <span className="text-red-500">*</span>
@@ -409,7 +435,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                 </select>
               </div>
 
-              {/* Password */}
               <div>
                 <label htmlFor="deptPassword" className="block text-sm font-medium text-gray-700 mb-1">
                   Faculty Department Password <span className="text-red-500">*</span>
@@ -424,7 +449,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                 />
               </div>
 
-              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={isLoggingIn}
@@ -448,11 +472,10 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
     );
   }
 
-  // RENDER: AUTHENTICATED DEPARTMENT PORTAL & EXCEL EXPORT
   return (
-    <div className="max-w-6xl mx-auto my-6 px-4">
+    <div className="max-w-6xl mx-auto my-6 px-4 relative">
       <CollegeBanner />
-      {/* Top Banner & Faculty Header */}
+      <FacultyTpoPanel token={token} department={facultyDept} />
       <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-hidden mb-6">
         <div className="h-2.5 bg-blue-700 w-full" />
         <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -483,7 +506,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Export to Excel Button */}
             <button
               type="button"
               onClick={handleExportToExcel}
@@ -500,7 +522,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
               {isExporting ? 'Exporting...' : 'Export to Excel (.xlsx)'}
             </button>
 
-            {/* Back to Student Form */}
             <button
               type="button"
               onClick={onBackToStudentForm}
@@ -509,7 +530,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
               Student Form
             </button>
 
-            {/* Logout */}
             <button
               type="button"
               onClick={handleLogout}
@@ -521,26 +541,22 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-xs">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Registered Students</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
           <p className="text-[11px] text-gray-400 mt-0.5">In current filter view</p>
         </div>
-
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-xs">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Average CGPA</p>
           <p className="text-2xl font-bold text-blue-600 mt-1">{stats.avgCgpa}</p>
           <p className="text-[11px] text-gray-400 mt-0.5">Scale of 0.00 – 10.00</p>
         </div>
-
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-xs">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">0 Backlogs (Clean)</p>
           <p className="text-2xl font-bold text-emerald-600 mt-1">{stats.zeroBacklogs}</p>
           <p className="text-[11px] text-gray-400 mt-0.5">All clear students</p>
         </div>
-
         <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-xs">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active Backlogs</p>
           <p className="text-2xl font-bold text-amber-600 mt-1">{stats.activeBacklogsCount}</p>
@@ -548,10 +564,8 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
         </div>
       </div>
 
-      {/* Filters & Search Toolbar */}
       <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-xs mb-6">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Search Input */}
           <div className="relative flex-1">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -568,7 +582,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* If Admin/ALL, allow branch switching */}
             {facultyDept === 'ALL' && (
               <select
                 value={selectedAdminBranch}
@@ -588,7 +601,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
               </select>
             )}
 
-            {/* Passing Year (YOP) Filter */}
             <select
               value={selectedYop}
               onChange={(e) => setSelectedYop(e.target.value)}
@@ -600,7 +612,6 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
               ))}
             </select>
 
-            {/* Refresh Button */}
             <button
               type="button"
               onClick={fetchStudents}
@@ -616,21 +627,12 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
         </div>
       </div>
 
-      {/* Error state */}
       {loadError && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-6">
           {loadError}
         </div>
       )}
 
-      {deleteError && (
-        <div role="alert" className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-6">{deleteError}</div>
-      )}
-      {deleteMessage && (
-        <div role="status" className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 mb-6">{deleteMessage}</div>
-      )}
-
-      {/* Students Data Table Card */}
       <div className="bg-white rounded-lg border border-gray-200 shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide">
@@ -665,8 +667,8 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                 <tr>
                   <th className="py-3 px-4">#</th>
                   <th className="py-3 px-4">Roll Number</th>
-                  <th className="py-3 px-4">Full Name</th>
-                  <th className="py-3 px-4">Action</th>
+                  <th className="py-3 px-4">First Name</th>
+                  <th className="py-3 px-4">Last Name</th>
                   <th className="py-3 px-4">Branch</th>
                   <th className="py-3 px-4">B.Tech CGPA</th>
                   <th className="py-3 px-4">Inter / Diploma</th>
@@ -676,7 +678,7 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                   <th className="py-3 px-4">Backlogs</th>
                   <th className="py-3 px-4">Email</th>
                   <th className="py-3 px-4">Mobile</th>
-                  <th className="py-3 px-4">Submitted At</th>
+                  <th className="py-3 px-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -687,18 +689,10 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                       {s.roll_number}
                     </td>
                     <td className="py-3 px-4 font-medium text-gray-900 whitespace-nowrap">
-                      {s.full_name}
+                      {s.first_name}
                     </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteStudent(s)}
-                        disabled={deletingId !== null}
-                        aria-label={`Delete registration for ${s.full_name}, ${s.roll_number}`}
-                        className="px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {deletingId === s.id ? 'Deleting...' : 'Delete'}
-                      </button>
+                    <td className="py-3 px-4 font-medium text-gray-900 whitespace-nowrap">
+                      {s.last_name}
                     </td>
                     <td className="py-3 px-4 text-xs font-medium text-blue-700">
                       <span className="bg-blue-50 px-2 py-0.5 rounded border border-blue-100 whitespace-nowrap">
@@ -743,16 +737,44 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
                     <td className="py-3 px-4 text-xs text-gray-600">
                       <div className="flex items-center gap-1">
                         <span>{s.email}</span>
-                        <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
                       </div>
                     </td>
                     <td className="py-3 px-4 text-xs text-gray-600 font-mono whitespace-nowrap">
                       +91 {s.mobile_number}
                     </td>
-                    <td className="py-3 px-4 text-[11px] text-gray-400 whitespace-nowrap">
-                      {s.created_at ? new Date(s.created_at).toLocaleDateString('en-IN') : 'Recent'}
+                    <td className="py-3 px-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => openEditModal(s)}
+                          className="p-1.5 rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 hover:text-blue-700 transition-colors cursor-pointer"
+                          title="Modify Details"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteStudent(s.id, s.roll_number)}
+                          disabled={isDeleting === s.id}
+                          className={`p-1.5 rounded-md transition-colors ${
+                            isDeleting === s.id
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              : 'bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 cursor-pointer'
+                          }`}
+                          title={`Delete ${s.roll_number}`}
+                        >
+                          {isDeleting === s.id ? (
+                            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -761,6 +783,178 @@ export const FacultyPortal: React.FC<FacultyPortalProps> = ({ onBackToStudentFor
           </div>
         )}
       </div>
+
+      {/* Edit Student Modal Popup */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+              <h3 className="text-lg font-bold text-gray-900">Modify Student Details</h3>
+              <button onClick={() => setEditingStudent(null)} className="text-gray-400 hover:text-gray-600 cursor-pointer">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              <form id="editStudentForm" onSubmit={handleUpdateStudent} className="space-y-6">
+                
+                {/* 1. Personal Details */}
+                <div>
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 border-b pb-1">Personal & Identity Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                      <input type="text" value={editFormData.first_name || ''} onChange={e => setEditFormData({...editFormData, first_name: e.target.value.toUpperCase()})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                      <input type="text" value={editFormData.last_name || ''} onChange={e => setEditFormData({...editFormData, last_name: e.target.value.toUpperCase()})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
+                      <select value={editFormData.gender || ''} onChange={e => setEditFormData({...editFormData, gender: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Select</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                      <input type="date" value={editFormData.date_of_birth ? editFormData.date_of_birth.split('T')[0] : ''} onChange={e => setEditFormData({...editFormData, date_of_birth: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Aadhaar Number</label>
+                      <input type="text" value={editFormData.aadhar_number || ''} onChange={e => setEditFormData({...editFormData, aadhar_number: e.target.value.replace(/\D/g, '')})} maxLength={12} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
+                      <input type="text" value={editFormData.pan_number || ''} onChange={e => setEditFormData({...editFormData, pan_number: e.target.value.toUpperCase()})} maxLength={10} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Passport Number</label>
+                      <input type="text" value={editFormData.passport_number || ''} onChange={e => setEditFormData({...editFormData, passport_number: e.target.value.toUpperCase()})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Academic Details */}
+                <div>
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 border-b pb-1">Academic Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">College</label>
+                      <input type="text" value={editFormData.college || ''} readOnly aria-readonly="true" className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Roll Number</label>
+                      <input type="text" value={editFormData.roll_number || ''} onChange={e => setEditFormData({...editFormData, roll_number: e.target.value.toUpperCase()})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" maxLength={10} required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                      <input type="text" value={editFormData.branch || ''} onChange={e => setEditFormData({...editFormData, branch: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" required />
+                    </div>
+                    {editFormData.branch === 'Other' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Other Branch Name</label>
+                        <input type="text" value={editFormData.other_branch || ''} onChange={e => setEditFormData({...editFormData, other_branch: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                      </div>
+                    )}
+                    
+                    {/* 10th Details */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">10th Details</label>
+                      <div className="flex gap-2">
+                        <input type="number" step="0.01" placeholder="CGPA" value={editFormData.tenth_cgpa || ''} onChange={e => setEditFormData({...editFormData, tenth_cgpa: parseFloat(e.target.value)})} className="w-1/2 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                        <input type="text" placeholder="YOP" value={editFormData.tenth_year_of_passing || ''} onChange={e => setEditFormData({...editFormData, tenth_year_of_passing: e.target.value})} className="w-1/2 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                      </div>
+                    </div>
+                    
+                    {/* Inter/Diploma Details */}
+                    <div className="flex gap-2 col-span-1 md:col-span-2 lg:col-span-1">
+                      <div className="w-1/3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Inter/Diploma</label>
+                        <select value={editFormData.intermediate_or_diploma || ''} onChange={e => setEditFormData({...editFormData, intermediate_or_diploma: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500">
+                          <option value="Intermediate">Intermediate</option>
+                          <option value="Diploma">Diploma</option>
+                        </select>
+                      </div>
+                      <div className="w-1/3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">CGPA</label>
+                        <input type="number" step="0.01" placeholder="CGPA" value={editFormData.intermediate_or_diploma === 'Diploma' ? (editFormData.diploma_cgpa || '') : (editFormData.intermediate_cgpa || '')} 
+                          onChange={e => {
+                            if (editFormData.intermediate_or_diploma === 'Diploma') {
+                              setEditFormData({...editFormData, diploma_cgpa: parseFloat(e.target.value)});
+                            } else {
+                              setEditFormData({...editFormData, intermediate_cgpa: parseFloat(e.target.value)});
+                            }
+                          }} 
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                      </div>
+                      <div className="w-1/3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">YOP</label>
+                        <input type="text" placeholder="YOP" value={editFormData.intermediate_year_of_passing || ''} onChange={e => setEditFormData({...editFormData, intermediate_year_of_passing: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">B.Tech CGPA</label>
+                      <input type="number" step="0.01" value={editFormData.cgpa || ''} onChange={e => setEditFormData({...editFormData, cgpa: parseFloat(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Percentage (%)</label>
+                      <input type="number" step="0.01" value={editFormData.percentage || ''} onChange={e => setEditFormData({...editFormData, percentage: parseFloat(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Active Backlogs</label>
+                      <input type="number" value={editFormData.active_backlogs === undefined ? '' : editFormData.active_backlogs} onChange={e => setEditFormData({...editFormData, active_backlogs: parseInt(e.target.value)})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Passing Year (YOP)</label>
+                      <input type="text" value={editFormData.btech_year_of_passing || ''} onChange={e => setEditFormData({...editFormData, btech_year_of_passing: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">CRT Registration</label>
+                      <select value={editFormData.crt_registration || ''} onChange={e => setEditFormData({...editFormData, crt_registration: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Select</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Contact Details */}
+                <div>
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 border-b pb-1">Contact Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                      <input type="email" value={editFormData.email || ''} onChange={e => setEditFormData({...editFormData, email: e.target.value.toLowerCase()})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Mobile Number</label>
+                      <input type="text" value={editFormData.mobile_number || ''} onChange={e => setEditFormData({...editFormData, mobile_number: e.target.value.replace(/\D/g, '')})} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:border-blue-500" maxLength={10} required />
+                    </div>
+                  </div>
+                </div>
+
+              </form>
+            </div>
+            
+            {/* Modal Footer Buttons */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+              <button type="button" onClick={() => setEditingStudent(null)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 cursor-pointer">
+                Cancel
+              </button>
+              <button type="submit" form="editStudentForm" disabled={isUpdating} className={`px-4 py-2 text-sm font-medium text-white rounded-md cursor-pointer ${isUpdating ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                {isUpdating ? 'Saving Changes...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

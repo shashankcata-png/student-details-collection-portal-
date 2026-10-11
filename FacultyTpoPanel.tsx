@@ -13,6 +13,9 @@ export function FacultyTpoPanel({ token, department }: { token: string; departme
   const [status, setStatus] = useState(''), [branch, setBranch] = useState(''), [yop, setYop] = useState('');
   const [customTemplate, setCustomTemplate] = useState<CustomTemplate | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editingOpp, setEditingOpp] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDeadline, setEditDeadline] = useState('');
   const [draft, setDraft] = useState({ title: '', template: 'SE', deadline: '', gapBeforeLabel: '', gapDuringLabel: '', diplomaAllowed: false });
   useEffect(() => { tpoRequest('managedOpportunities', token).then(d => setOpportunities(d.opportunities)).catch(e => setError(e.message)); }, [token]);
   async function run(fn: () => Promise<void>) { setBusy(true); setError(''); try { await fn(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } }
@@ -48,15 +51,39 @@ export function FacultyTpoPanel({ token, department }: { token: string; departme
       <label className="text-sm">Branch<select className={`${input} block`} value={branch} onChange={e => setBranch(e.target.value)}><option value="">All permitted branches</option>{[...new Set(applications.map(a => a.snapshot.branch))].sort().map(s => <option key={s}>{s}</option>)}</select></label>
       <label className="text-sm">Graduation year<select className={`${input} block`} value={yop} onChange={e => setYop(e.target.value)}><option value="">All years</option>{[...new Set(applications.map(a => a.snapshot.yop).filter(Boolean))].sort().map(s => <option key={s}>{s}</option>)}</select></label>
     </div>
-    {department === 'ALL' && !selected && <p className="text-sm text-gray-600">To delete or restore an opportunity, select it from the Opportunity dropdown above. Deletion hides it from students but keeps applications and exports.</p>}
-    {selected && department === 'ALL' && <div className="rounded border border-red-200 bg-red-50 p-3 text-sm space-y-2">
+    {selected && department === 'ALL' && <div className="rounded border p-3 text-sm space-y-2">
       <p>{opportunities.find(o => o.id === selected)?.archived_at ? 'Deleted: hidden from students. Saved applications remain available below. Restore makes it visible again; the original deadline still applies.' : 'Delete hides this opportunity from students and stops new submissions. Saved applications and exports are retained.'}</p>
-      <button type="button" disabled={busy} className="bg-red-700 hover:bg-red-800 text-white rounded px-3 py-2 text-sm disabled:opacity-50" onClick={() => run(async () => {
-        const archived = !!opportunities.find(o => o.id === selected)?.archived_at;
-        if (!window.confirm(archived ? 'Restore this opportunity to the student list?' : 'Delete this opportunity from the student list? Existing applications will be retained.')) return;
-        const d = await tpoRequest(archived ? 'restore' : 'archive', token, { id: selected }, 'PATCH');
+      <div className="flex flex-wrap gap-2">
+        <button type="button" disabled={busy} className={button} onClick={() => run(async () => {
+          const archived = !!opportunities.find(o => o.id === selected)?.archived_at;
+          if (!window.confirm(archived ? 'Restore this opportunity to the student list?' : 'Delete this opportunity from the student list? Existing applications will be retained.')) return;
+          const d = await tpoRequest(archived ? 'restore' : 'archive', token, { id: selected }, 'PATCH');
+          setOpportunities(prev => prev.map(o => o.id === selected ? d.opportunity : o));
+        })}>{opportunities.find(o => o.id === selected)?.archived_at ? 'Restore opportunity' : 'Delete opportunity'}</button>
+        <button type="button" disabled={busy} className="bg-gray-700 text-white rounded px-3 py-2 text-sm disabled:opacity-50" onClick={() => {
+          const opp = opportunities.find(o => o.id === selected);
+          if (opp) {
+            setEditTitle(opp.title);
+            try {
+              const dt = new Date(opp.deadline);
+              const localIso = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+              setEditDeadline(localIso);
+            } catch { setEditDeadline(''); }
+            setEditingOpp(!editingOpp);
+          }
+        }}>{editingOpp ? 'Cancel edit' : 'Edit details / deadline'}</button>
+      </div>
+      {editingOpp && <form className="border-t pt-3 mt-2 space-y-2" onSubmit={e => { e.preventDefault(); run(async () => {
+        const d = await tpoRequest('edit', token, { id: selected, title: editTitle, deadline: new Date(editDeadline).toISOString() }, 'PATCH');
         setOpportunities(prev => prev.map(o => o.id === selected ? d.opportunity : o));
-      })}>{opportunities.find(o => o.id === selected)?.archived_at ? 'Restore opportunity' : 'Delete opportunity'}</button>
+        setEditingOpp(false);
+      }); }}>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <label className="text-xs font-medium">Title<input className={`${input} w-full`} required maxLength={160} value={editTitle} onChange={e => setEditTitle(e.target.value)} /></label>
+          <label className="text-xs font-medium">Deadline<input type="datetime-local" required className={`${input} w-full`} value={editDeadline} onChange={e => setEditDeadline(e.target.value)} /></label>
+        </div>
+        <button className={button} disabled={busy}>Save changes</button>
+      </form>}
     </div>}
     {selected && <><p className="text-sm">{matching.length} applications · {verified} verified and ready for export. Downloads include verified applications matching branch and year, regardless of the status view.</p>
       <div className="flex gap-3"><button disabled={busy} className={button} onClick={() => run(() => load())}>Refresh</button><button disabled={busy || !verified} className={button} onClick={() => run(async () => {
