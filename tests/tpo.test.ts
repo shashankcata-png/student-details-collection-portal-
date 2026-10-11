@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import * as XLSX from 'xlsx';
-import { TpoStore } from '../server/tpo-store.js';
+import pg from 'pg';
+import { TpoStore, tpoPoolConfig } from '../server/tpo-store.js';
 import { createTpoHandler } from '../api/tpo.js';
 import { tpoWorkbook } from '../server/tpo-export.js';
 import { EMPTY_TPO_DETAILS, type TpoDetails } from '../src/types/tpo.js';
@@ -94,4 +95,17 @@ test('TPO application lifecycle, authorization, exports and preservation on isol
     await assert.rejects(sql.query('SELECT * FROM tpo_applications'));
     await sql.exec('RESET ROLE');
   } finally { await sql.close(); }
+});
+
+test('Supabase pool retains CA and hostname verification with SSL URL parameters', () => {
+  for (const host of ['db.example.supabase.co', 'aws-0-ap-southeast-2.pooler.supabase.com']) {
+    const config = tpoPoolConfig(`postgresql://test:test@${host}:5432/postgres?sslmode=require&sslrootcert=ignored`);
+    const client = new pg.Client(config);
+    const ssl = client.ssl as unknown as { rejectUnauthorized: boolean; ca: string[] };
+    assert.equal(ssl.rejectUnauthorized, true);
+    assert.ok(ssl.ca.some(cert => cert.includes('BEGIN CERTIFICATE')));
+    assert.equal(new URL(config.connectionString!).searchParams.has('sslmode'), false);
+    assert.equal(client.host, host);
+  }
+  assert.equal(tpoPoolConfig('postgresql://test:test@localhost/test').ssl, undefined);
 });
