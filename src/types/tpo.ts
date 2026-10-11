@@ -1,3 +1,4 @@
+import type { CustomTemplate } from '../lib/custom-tpo.js';
 export type TpoTemplate = 'SE' | 'AE_ABA';
 export type ApplicationStatus = 'Submitted' | 'Needs Correction' | 'Verified';
 export interface TpoOpportunity {
@@ -9,8 +10,10 @@ export interface TpoOpportunity {
   gap_before_label: string;
   gap_during_label: string;
   diploma_allowed: boolean;
+  custom_template?: CustomTemplate | null;
 }
 export interface TpoDetails {
+  customAnswers?: Record<string, string>;
   tenthBoard: string;
   intermediateBoard: string;
   degree: string;
