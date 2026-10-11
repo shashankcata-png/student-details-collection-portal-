@@ -1,6 +1,6 @@
 # TPO release handoff
 
-Status: implementation published on `codex/tpo-applications` in draft PR #2. Local tests, type checks and production build passed; Vercel preview verification is pending. Not released to production. Production student data has not been modified.
+Status: release in progress from `codex/tpo-applications`, PR #2. The owner requested existing department passwords and the current database setup remain unchanged. The additive TPO schema was applied on 2026-10-11. Existing student values were compared exactly inside the migration transaction. Production application promotion is pending.
 
 ## Implemented
 
@@ -13,7 +13,7 @@ Status: implementation published on `codex/tpo-applications` in draft PR #2. Loc
 - TPO snapshots exclude Aadhaar, PAN and passport. Existing general student exports still include their original identity fields.
 - Local server routes now reuse the deployed handlers. Type checking targets actual application files; stale duplicate source copies are retained but excluded.
 - Fixed faculty YOP field bindings and the general export authentication mismatch.
-- Removed acceptance of hard-coded faculty defaults; department edits/deletes are checked against the student's current department.
+- Preserved existing department passwords at the owner's explicit request. Private per-department overrides remain supported; the newly configured admin password is admin-only. Department edits/deletes are checked against the student's current department. Legacy passwords remain in public repository history and are an existing security risk.
 
 ## Local verification
 
@@ -21,20 +21,19 @@ Run `npm ci`, `npm run lint`, `npm test`, and `npm run build`.
 
 The integration test runs isolated PostgreSQL through PGlite using synthetic students. It checks repeatable schema application, unchanged student records, atomic duplicate rejection, stale revision rejection, correction/resubmission, verified locking, department restrictions, expired opportunities, RLS, denial of anonymous access, restricted deletion, and round-trip reading of both `.xls` outputs. Phone numbers and roll numbers retain leading zeroes; formula-like certification text remains text.
 
-Faculty authentication tests cover configured credentials, rejection of public defaults, wrong departments and malformed/forged session tokens.
+Faculty authentication tests cover legacy department compatibility, private overrides, wrong departments and malformed/forged session tokens.
 
 Build, type checks and tests passed locally. Live email delivery, browser end-to-end interaction, Vercel runtime and production PostgreSQL TLS connectivity remain unverified. The remote browser cannot connect to the local development server.
 
-## Required before release
+## Release checks
 
-1. GitHub publication completed through the owner-authorized shared browser. Draft PR: https://github.com/shashankcata-png/student-details-collection-portal-/pull/2 . All 23 implementation files were fetched and compared byte-for-byte with the locally tested tree. Keep the PR in draft until the following release checks are complete.
-2. In Vercel, configure private faculty credentials directly as Secrets. Never commit or paste credentials in chat. `FACULTY_PASSWORD` is an admin-only password of at least 12 characters. `FACULTY_DEPARTMENT_PASSWORDS` is a JSON object mapping department codes to different passwords of at least 12 characters. Configure only departments that should have access. Existing department codes are in `server/faculty.ts`. An existing `FACULTY_JWT_SECRET` is present in production, but its value/length was not read. Use a random secret of at least 32 characters and rotate it for this release to invalidate old sessions. **Deploying without these values prevents faculty sign-in.**
-3. Verify a database backup can restore into an isolated environment. A count of 618 students was observed; this is not a backup. No backup restoration has been performed. Keep backup files private and outside this public repository.
-4. Configure a separate staging database, OTP settings and faculty secrets for the feature branch's Preview environment. Production `DATABASE_URL` must not be used for tests. No Supabase development branch currently exists; paid provisioning has not been authorized.
-5. Apply `database/tpo-schema.sql` to staging, using a migration recorded through the team's migration workflow. The file is an additive schema script; the old `database/schema.sql` is stale and must not be used to reconstruct production. Test with synthetic data only.
-6. Verify in the preview: real OTP sign-in, registered-profile lookup, submit, department review, corrections, resubmit, export download and reopening in Excel. Test wrong email/roll pairings, wrong department, expired sessions and deadlines. Confirm original registration/general export still work.
-7. Capture a fresh production baseline of stable record IDs and row checksums at migration time, accounting separately for concurrent legitimate submissions/edits. Apply only the new schema and compare all existing student values. RLS is enabled and direct `anon`/`authenticated` grants are revoked for the new tables; server APIs use the application's existing database connection and explicit checks.
-8. Stage a production deployment, verify it, then assign the production domain. The target is Vercel project `prj_8g5LRyNjG8h6GYaXz72ygpaWIccR`, team `team_pUv6ZCRwXcFY8jK58UuKHLGP`, Supabase project `yoiyukkymaspmskigrck`.
+- GitHub PR: https://github.com/shashankcata-png/student-details-collection-portal-/pull/2 . The uploaded tree was fetched and compared with the locally tested files.
+- `FACULTY_PASSWORD` is configured as a Production Secret. It was not read. Existing department passwords are retained unless a private `FACULTY_DEPARTMENT_PASSWORDS` override is configured. Existing `FACULTY_JWT_SECRET` is retained.
+- No paid staging resource was created, per the owner's request to keep the database setup unchanged. Integration tests run with synthetic data in isolated local PostgreSQL.
+- Migration `add_tpo_with_private_student_safety_snapshot` added only TPO tables and a private safety snapshot. Existing student rows were locked briefly, copied into `portal_release_backup.students_before_tpo_20261011`, restored into a temporary table, then compared in both directions. Student values were compared again after schema creation in the same transaction; a mismatch would roll everything back.
+- The private snapshot has RLS and no public, anonymous, authenticated or service-role grants. It is in the same database, not an off-site disaster-recovery backup.
+- Live checks must confirm TPO database connectivity, faculty authentication and scope, and production-domain routing. Actual email delivery and a complete real-student OTP workflow require a controlled email account; do not claim those are verified by synthetic integration tests.
+- Vercel project: `prj_8g5LRyNjG8h6GYaXz72ygpaWIccR`, team: `team_pUv6ZCRwXcFY8jK58UuKHLGP`, Supabase project: `yoiyukkymaspmskigrck`.
 
 ## Rollback
 
