@@ -1,6 +1,16 @@
 # TPO release handoff
 
-Status: release in progress from `codex/tpo-applications`, PR #2. The owner requested existing department passwords and the current database setup remain unchanged. The additive TPO schema was applied on 2026-10-11. Existing student values were compared exactly inside the migration transaction. Production application promotion is pending.
+Status: PR #2 merged; production promotion is BLOCKED. The owner requested existing department passwords and database setup remain unchanged. The main public portal still serves commit `876ced4`. Automatic custom-domain assignment is paused so new builds do not replace it.
+
+## Production database mismatch discovered 2026-10-11
+
+- Vercel's production DATABASE_URL connects to Supabase project `eyquqztzjutbdlfssbkm` (Sydney pooler, postgres database).
+- The connected Supabase tool only has access to project `yoiyukkymaspmskigrck`. Access to the actual production project was explicitly denied.
+- The additive migration and private safety snapshot described below were applied to `yoiyukkymaspmskigrck`, NOT the live portal database. The 618 unchanged rows are in that connected project; this does not verify production data preservation. No existing rows were modified there.
+- Do not change production DATABASE_URL to the connected project: that could switch the portal away from its live student records.
+- The latest production candidate builds successfully and validates Supabase TLS using the official public CA. Runtime SQL reports missing `public.tpo_opportunities` (42P01) in the actual production database, so it must not be promoted yet.
+- Obtain authorized access to `eyquqztzjutbdlfssbkm`; take and validate a safety snapshot there, apply only the additive TPO schema, compare existing student rows, and rerun runtime checks before promoting. Do not remove the other project's snapshot or tables without review.
+- After successful promotion, restore automatic custom-domain assignment. Real student email/OTP end-to-end verification remains outstanding.
 
 ## Implemented
 
@@ -23,14 +33,14 @@ The integration test runs isolated PostgreSQL through PGlite using synthetic stu
 
 Faculty authentication tests cover legacy department compatibility, private overrides, wrong departments and malformed/forged session tokens.
 
-Build, type checks and tests passed locally. Live email delivery, browser end-to-end interaction, Vercel runtime and production PostgreSQL TLS connectivity remain unverified. The remote browser cannot connect to the local development server.
+Build, type checks and tests passed locally. Production TLS connectivity is verified after adding the official Supabase CA. Runtime SQL is blocked by the missing schema in the actual production project. Live email delivery and complete browser end-to-end interaction remain unverified.
 
 ## Release checks
 
 - GitHub PR: https://github.com/shashankcata-png/student-details-collection-portal-/pull/2 . The uploaded tree was fetched and compared with the locally tested files.
 - `FACULTY_PASSWORD` is configured as a Production Secret. It was not read. Existing department passwords are retained unless a private `FACULTY_DEPARTMENT_PASSWORDS` override is configured. Existing `FACULTY_JWT_SECRET` is retained.
 - No paid staging resource was created, per the owner's request to keep the database setup unchanged. Integration tests run with synthetic data in isolated local PostgreSQL.
-- Migration `add_tpo_with_private_student_safety_snapshot` added only TPO tables and a private safety snapshot. Existing student rows were locked briefly, copied into `portal_release_backup.students_before_tpo_20261011`, restored into a temporary table, then compared in both directions. Student values were compared again after schema creation in the same transaction; a mismatch would roll everything back.
+- In connected project `yoiyukkymaspmskigrck` (not the live database), migration `add_tpo_with_private_student_safety_snapshot` added only TPO tables and a private safety snapshot. Existing student rows were locked briefly, copied into `portal_release_backup.students_before_tpo_20261011`, restored into a temporary table, then compared in both directions. Student values were compared again after schema creation in the same transaction; a mismatch would roll everything back.
 - The private snapshot has RLS and no public, anonymous, authenticated or service-role grants. It is in the same database, not an off-site disaster-recovery backup.
 - Live checks must confirm TPO database connectivity, faculty authentication and scope, and production-domain routing. Actual email delivery and a complete real-student OTP workflow require a controlled email account; do not claim those are verified by synthetic integration tests.
 - Vercel project: `prj_8g5LRyNjG8h6GYaXz72ygpaWIccR`, team: `team_pUv6ZCRwXcFY8jK58UuKHLGP`, Supabase project: `yoiyukkymaspmskigrck`.
