@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import * as XLSX from 'xlsx';
 import { db, type StudentDbRow } from './db.js';
 
-const FACULTY_SECRET = process.env.FACULTY_JWT_SECRET || 'avn_faculty_dept_secret_key_2026';
-const GLOBAL_FACULTY_PASS = process.env.FACULTY_PASSWORD || 'faculty@avn2026';
+const FACULTY_SECRET = process.env.FACULTY_JWT_SECRET || '';
+const GLOBAL_FACULTY_PASS = process.env.FACULTY_PASSWORD || '';
 
 export interface DepartmentInfo {
   code: string;
@@ -97,17 +97,22 @@ export function getDepartmentAliases(departmentCode: string): string[] {
  */
 export function verifyFacultyCredentials(department: string, pass: string): boolean {
   const dept = DEPARTMENTS[department];
-  if (!dept) return false;
-
-  const trimmedPass = (pass || '').trim();
-  // Accepts department-specific password or global faculty passkey
-  return trimmedPass === dept.defaultPass || trimmedPass === GLOBAL_FACULTY_PASS;
+  if (!dept || typeof pass !== 'string' || FACULTY_SECRET.length < 32) return false;
+  let configured: Record<string, string> = {};
+  try { configured = JSON.parse(process.env.FACULTY_DEPARTMENT_PASSWORDS || '{}'); } catch { return false; }
+  // Public repository defaults must never grant access to student records.
+  const expected = department === 'ALL' ? (configured.ALL || GLOBAL_FACULTY_PASS) : configured[department];
+  if (typeof expected !== 'string' || expected.length < 12 || Object.values(DEPARTMENTS).some(d => d.defaultPass === expected) || expected === 'faculty@avn2026') return false;
+  const actualHash = crypto.createHash('sha256').update(pass).digest();
+  const expectedHash = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(actualHash, expectedHash);
 }
 
 /**
  * Create signed faculty session token
  */
 export function createFacultyToken(department: string): string {
+  if (FACULTY_SECRET.length < 32 || !DEPARTMENTS[department]) throw new Error('Faculty authentication is not configured.');
   const payload = {
     dept: department,
     exp: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
@@ -122,15 +127,15 @@ export function createFacultyToken(department: string): string {
  * Verify faculty session token
  */
 export function verifyFacultyToken(token: string): { dept: string } | null {
-  if (!token || !token.includes('.')) return null;
+  if (FACULTY_SECRET.length < 32 || !token || token.split('.').length !== 2) return null;
   const [str, sig] = token.split('.');
   const expectedSig = crypto.createHmac('sha256', FACULTY_SECRET).update(str).digest('base64url');
 
-  if (sig !== expectedSig) return null;
+  if (Buffer.byteLength(sig) !== Buffer.byteLength(expectedSig) || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
 
   try {
     const payload = JSON.parse(Buffer.from(str, 'base64url').toString('utf8'));
-    if (!payload.exp || payload.exp < Date.now()) return null;
+    if (!Number.isFinite(payload.exp) || payload.exp < Date.now() || !DEPARTMENTS[payload.dept]) return null;
     return { dept: payload.dept };
   } catch {
     return null;
@@ -144,7 +149,7 @@ export function generateStudentsExcelBuffer(students: StudentDbRow[], department
   const data = students.map((s, idx) => ({
     'S.No': idx + 1,
     'Roll Number / Hall Ticket': s.roll_number,
-    'Full Name': s.full_name,
+    'Full Name': `${s.first_name || ''} ${s.last_name || ''}`.trim(),
     'Department / Branch': s.branch === 'Other' && s.other_branch ? `${s.branch} (${s.other_branch})` : s.branch,
     'Academic Session': '2026–2027',
     'College / Institution': s.college,
