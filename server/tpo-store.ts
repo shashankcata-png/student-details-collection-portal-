@@ -5,9 +5,9 @@ import type { TpoApplication, TpoDetails, TpoOpportunity, TpoSnapshot, Applicati
 export interface Queryable { query(sql: string, values?: any[]): Promise<{ rows: any[] }> }
 export class TpoStore {
   constructor(private sql: Queryable) {}
-  async opportunities(): Promise<TpoOpportunity[]> {
+  async opportunities(includeArchived = false): Promise<TpoOpportunity[]> {
     try {
-      return (await this.sql.query('SELECT * FROM public.tpo_opportunities ORDER BY created_at DESC')).rows;
+      return (await this.sql.query('SELECT * FROM public.tpo_opportunities WHERE ($1::boolean OR archived_at IS NULL) ORDER BY created_at DESC', [includeArchived])).rows;
     } catch (error: any) {
       if (error?.code === '42P01') {
         const target = new URL(process.env.DATABASE_URL!);
@@ -28,6 +28,10 @@ export class TpoStore {
       (title, template, deadline, gap_before_label, gap_during_label, diploma_allowed, custom_template)
       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,
     [o.title, o.template, o.deadline, o.gap_before_label, o.gap_during_label, o.diploma_allowed, o.custom_template ? JSON.stringify(o.custom_template) : null])).rows[0];
+  }
+  async archiveOpportunity(id: string, archived: boolean): Promise<TpoOpportunity | undefined> {
+    return (await this.sql.query(`UPDATE public.tpo_opportunities SET archived_at=CASE WHEN $2 THEN now() ELSE NULL END,
+      is_open=NOT $2 WHERE id=$1 RETURNING *`, [id, archived])).rows[0];
   }
   async student(roll: string, email: string): Promise<{ id: string; snapshot: TpoSnapshot } | undefined> {
     const row = (await this.sql.query(`SELECT id, college, first_name, last_name, roll_number, gender,
@@ -54,7 +58,7 @@ export class TpoStore {
     // An atomic upsert prevents duplicate submissions and stale correction overwrites.
     return (await this.sql.query(`INSERT INTO public.tpo_applications (opportunity_id, student_id, snapshot, details)
       SELECT id, $2, $3::jsonb, $4::jsonb FROM public.tpo_opportunities
-      WHERE id=$1 AND is_open AND deadline > now()
+      WHERE id=$1 AND is_open AND archived_at IS NULL AND deadline > now()
       ON CONFLICT (opportunity_id, student_id) DO UPDATE
       SET snapshot=EXCLUDED.snapshot, details=EXCLUDED.details, status='Submitted', correction_note='',
         reviewed_by_department=NULL, version=tpo_applications.version+1, updated_at=now()

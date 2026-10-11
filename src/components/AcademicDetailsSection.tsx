@@ -129,7 +129,7 @@ export const AcademicDetailsSection: React.FC<AcademicDetailsProps> = ({
             id="college"
             type="text"
             value={college}
-            onChange={(e) => onChange('college', e.target.value)}
+            readOnly aria-readonly="true"
             className={`w-full px-3.5 py-2.5 rounded-md border text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none transition-colors ${
               errors.college
                 ? 'border-red-400 focus:border-red-500 focus:ring-1 focus:ring-red-400'
@@ -139,7 +139,7 @@ export const AcademicDetailsSection: React.FC<AcademicDetailsProps> = ({
           {errors.college ? (
             <p className="mt-1 text-xs text-red-600">{errors.college}</p>
           ) : (
-            <p className="mt-1 text-xs text-gray-400">Default institution is pre-filled and can be edited if needed.</p>
+            <p className="mt-1 text-xs text-gray-400">Institution is fixed and cannot be edited.</p>
           )}
         </div>
 

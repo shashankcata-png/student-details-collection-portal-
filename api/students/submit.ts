@@ -123,7 +123,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // 9. Verify College
-    const trimmedCollege = typeof college === 'string' ? college.trim() : '';
+    const trimmedCollege = 'AVN INSTITUTE OF ENGINEERING AND TECHNOLOGY';
     if (!trimmedCollege) {
       errors.college = 'College / Institution is required.';
     } else if (trimmedCollege.length > 200) {

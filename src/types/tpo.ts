@@ -7,6 +7,7 @@ export interface TpoOpportunity {
   template: TpoTemplate;
   deadline: string;
   is_open: boolean;
+  archived_at?: string | null;
   gap_before_label: string;
   gap_during_label: string;
   diploma_allowed: boolean;
@@ -25,7 +26,7 @@ export interface TpoDetails {
   offerDetails: string;
 }
 export const EMPTY_TPO_DETAILS: TpoDetails = {
-  tenthBoard: '', intermediateBoard: '', degree: 'B.Tech', gapBefore: '',
+  tenthBoard: '', intermediateBoard: '', degree: 'B.Tech-UG', gapBefore: '',
   gapDuring: '', role: '', certifications: '', hasOffer: '', offerDetails: '',
 };
 // Explicit allowlist: government identifiers are never copied into applications.

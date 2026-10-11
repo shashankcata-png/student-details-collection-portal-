@@ -43,6 +43,9 @@ export default async function handler(req: any, res: any) {
       delete updates.email;
     }
 
+    // Institution is immutable; retain the stored value during all faculty edits.
+    delete updates.college;
+
     // 4. Update Database
     const updatedStudent = await db.updateStudent(id, updates);
     if (updatedStudent) {

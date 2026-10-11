@@ -30,7 +30,7 @@ export function createTpoHandler(deps: { store: () => TpoStore; verifyEmail: typ
         const store = deps.store();
         const student = await store.student(roll, email), opportunity = await store.opportunity(body.opportunityId);
         if (!student) return res.status(404).json({ success: false, message: 'No student profile matches this roll number and verified email. Contact faculty.' });
-        if (!opportunity) return res.status(404).json({ success: false, message: 'Opportunity not found.' });
+        if (!opportunity || opportunity.archived_at) return res.status(404).json({ success: false, message: 'Opportunity not found.' });
         const application = await store.application(opportunity.id, student.id);
         if (action === 'lookup') return res.json({ success: true, snapshot: student.snapshot, application: application || null });
         const raw = body.details || {};
@@ -54,7 +54,17 @@ export function createTpoHandler(deps: { store: () => TpoStore; verifyEmail: typ
       if (!session || !DEPARTMENTS[session.dept]) return res.status(401).json({ success: false, message: 'Faculty sign-in required.' });
       const branches = session.dept === 'ALL' ? null : getDepartmentAliases(session.dept);
       const store = deps.store();
-      if (action === 'create' && req.method === 'POST') {
+      if (action === 'managedOpportunities' && req.method === 'GET') {
+        return res.json({ success: true, opportunities: await store.opportunities(session.dept === 'ALL') });
+      }
+      if (['archive', 'restore'].includes(action) && req.method === 'PATCH') {
+        if (session.dept !== 'ALL') return res.status(403).json({ success: false, message: 'Only the administrator can delete or restore opportunities.' });
+        if (!uuid(body.id)) return res.status(400).json({ success: false, message: 'Select an opportunity.' });
+        const opportunity = await store.archiveOpportunity(body.id, action === 'archive');
+        if (!opportunity) return res.status(404).json({ success: false, message: 'Opportunity not found.' });
+        return res.json({ success: true, opportunity });
+      }
+      if (action === 'create'  && req.method === 'POST') {
         if (session.dept !== 'ALL') return res.status(403).json({ success: false, message: 'Only the administrator can create opportunities.' });
         const custom = body.customTemplate ?? null;
         if (custom) { const errors = templateErrors(custom); if (errors.length) return res.status(400).json({ success: false, message: errors.join(' ') }); }
