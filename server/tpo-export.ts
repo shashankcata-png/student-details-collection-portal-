@@ -2,6 +2,24 @@ import * as XLSX from 'xlsx';
 import type { TpoApplication, TpoOpportunity } from '../src/types/tpo.js';
 
 export function tpoWorkbook(applications: TpoApplication[], opportunity: TpoOpportunity): XLSX.WorkBook {
+  if (opportunity.custom_template) {
+    const t = opportunity.custom_template;
+    const rows: (string | number | null)[][] = [...t.preamble.map(r => [...r]), t.columns.map(c => c.header)];
+    applications.forEach((a, index) => rows.push(t.columns.map((c, i) => {
+      if (c.source === 'serial') return index + 1;
+      if (c.source === 'blank') return '';
+      if (c.source !== 'question') return a.snapshot[c.source as keyof typeof a.snapshot] ?? '';
+      const value = a.details.customAnswers?.[`c${i}`] || '';
+      return c.type === 'number' && value !== '' ? Number(value) : value;
+    })));
+    // Build fresh cells: uploaded formulas, links and macros are never executed/copied.
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet['!cols'] = t.columns.map(() => ({ wch: 24 }));
+    sheet['!autofilter'] = { ref: `A${t.headerRow}:${XLSX.utils.encode_col(t.columns.length - 1)}${rows.length}` };
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, t.sheetName);
+    return workbook;
+  }
   const headers = ['S.No', 'College', 'Name of the student', 'Roll number', 'Gender', 'DOB', 'Contact No.', 'Email id',
     '10%', 'Board', '12%', 'Board', 'Gap in Yrs', 'Grad %', 'Degree', 'B.Tech/B.E Branch', 'Gap in Yrs',
     ...(opportunity.template === 'AE_ABA' ? ['Role                    (AE , ABA or Both)', 'Any Certification'] : ['Any Certification / Course in CS/IT ']),

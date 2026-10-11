@@ -25,9 +25,9 @@ export class TpoStore {
   }
   async createOpportunity(o: Omit<TpoOpportunity, 'id' | 'is_open'>): Promise<TpoOpportunity> {
     return (await this.sql.query(`INSERT INTO public.tpo_opportunities
-      (title, template, deadline, gap_before_label, gap_during_label, diploma_allowed)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [o.title, o.template, o.deadline, o.gap_before_label, o.gap_during_label, o.diploma_allowed])).rows[0];
+      (title, template, deadline, gap_before_label, gap_during_label, diploma_allowed, custom_template)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb) RETURNING *`,
+    [o.title, o.template, o.deadline, o.gap_before_label, o.gap_during_label, o.diploma_allowed, o.custom_template ? JSON.stringify(o.custom_template) : null])).rows[0];
   }
   async student(roll: string, email: string): Promise<{ id: string; snapshot: TpoSnapshot } | undefined> {
     const row = (await this.sql.query(`SELECT id, college, first_name, last_name, roll_number, gender,
