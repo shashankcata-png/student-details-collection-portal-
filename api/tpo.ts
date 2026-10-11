@@ -1,3 +1,4 @@
+import { templateErrors } from '../src/lib/custom-tpo.js';
 import * as XLSX from 'xlsx';
 import { getTpoStore, TpoStore } from '../server/tpo-store.js';
 import { verifyFacultyToken, getDepartmentAliases, DEPARTMENTS } from '../server/faculty.js';
@@ -39,6 +40,9 @@ export function createTpoHandler(deps: { store: () => TpoStore; verifyEmail: typ
           certifications: text(raw.certifications, 2000), hasOffer: raw.hasOffer,
           offerDetails: raw.hasOffer === 'No' ? '' : text(raw.offerDetails, 1000),
         };
+        if (opportunity.custom_template) {
+          details.customAnswers = Object.fromEntries(opportunity.custom_template.columns.flatMap((c, i) => c.source === 'question' ? [[`c${i}`, text(raw.customAnswers?.[`c${i}`], 2000)]] : []));
+        }
         const errors = tpoErrors(details, student.snapshot, opportunity);
         if (!validVersion(body.version)) errors.push('Reload the application before submitting.');
         if (errors.length) return res.status(400).json({ success: false, message: errors.join(' '), errors });
@@ -52,13 +56,15 @@ export function createTpoHandler(deps: { store: () => TpoStore; verifyEmail: typ
       const store = deps.store();
       if (action === 'create' && req.method === 'POST') {
         if (session.dept !== 'ALL') return res.status(403).json({ success: false, message: 'Only the administrator can create opportunities.' });
-        const title = text(body.title, 160), gapBefore = text(body.gapBeforeLabel, 120), gapDuring = text(body.gapDuringLabel, 120);
+        const custom = body.customTemplate ?? null;
+        if (custom) { const errors = templateErrors(custom); if (errors.length) return res.status(400).json({ success: false, message: errors.join(' ') }); }
+        const title = text(body.title, 160), gapBefore = custom ? 'Template question' : text(body.gapBeforeLabel, 120), gapDuring = custom ? 'Template question' : text(body.gapDuringLabel, 120);
         if (!title || title.length > 160 || !gapBefore || gapBefore.length > 120 || !gapDuring || gapDuring.length > 120 ||
             !['SE', 'AE_ABA'].includes(body.template) || !Number.isFinite(Date.parse(body.deadline)) || Date.parse(body.deadline) <= Date.now()) {
           return res.status(400).json({ success: false, message: 'Enter a title, template, future deadline and definitions for both education gaps.' });
         }
         const opportunity = await store.createOpportunity({ title, template: body.template as TpoTemplate, deadline: new Date(body.deadline).toISOString(),
-          gap_before_label: gapBefore, gap_during_label: gapDuring, diploma_allowed: body.diplomaAllowed === true });
+          gap_before_label: gapBefore, gap_during_label: gapDuring, diploma_allowed: body.diplomaAllowed === true, custom_template: custom });
         return res.status(201).json({ success: true, opportunity });
       }
       if (action === 'review' && req.method === 'PATCH') {
@@ -81,9 +87,9 @@ export function createTpoHandler(deps: { store: () => TpoStore; verifyEmail: typ
         applications = applications.filter(a => a.status === 'Verified');
         if (!applications.length) return res.status(400).json({ success: false, message: 'No verified applications match these filters.' });
         if (applications.some(a => tpoErrors(a.details, a.snapshot, opportunity).length)) return res.status(400).json({ success: false, message: 'Some applications have missing data. Return them for correction before exporting.' });
-        const buffer = XLSX.write(tpoWorkbook(applications, opportunity), { type: 'buffer', bookType: 'biff8' });
-        res.setHeader('Content-Type', 'application/vnd.ms-excel');
-        res.setHeader('Content-Disposition', `attachment; filename="TPO_${opportunity.template}.xls"`);
+        const buffer = XLSX.write(tpoWorkbook(applications, opportunity), { type: 'buffer', bookType: opportunity.custom_template ? 'xlsx' : 'biff8' });
+        res.setHeader('Content-Type', opportunity.custom_template ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.ms-excel');
+        res.setHeader('Content-Disposition', `attachment; filename="TPO_${opportunity.custom_template ? 'Custom.xlsx' : opportunity.template + '.xls'}"`);
         return res.send(buffer);
       }
       return res.status(400).json({ success: false, message: 'Unknown action.' });

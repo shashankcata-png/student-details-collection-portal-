@@ -32,4 +32,5 @@ ALTER TABLE public.tpo_opportunities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tpo_applications ENABLE ROW LEVEL SECURITY;
 -- Access is through the authenticated server API, never directly from the browser.
 REVOKE ALL ON public.tpo_opportunities, public.tpo_applications FROM anon, authenticated;
+ALTER TABLE public.tpo_opportunities ADD COLUMN IF NOT EXISTS custom_template jsonb CHECK (custom_template IS NULL OR (jsonb_typeof(custom_template) = 'object' AND octet_length(custom_template::text) <= 150000));
 COMMIT;

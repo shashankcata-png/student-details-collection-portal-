@@ -1,6 +1,8 @@
+import { customErrors } from './custom-tpo.js';
 import type { TpoDetails, TpoOpportunity, TpoSnapshot } from '../types/tpo.js';
 
 export function tpoErrors(details: TpoDetails, snapshot: TpoSnapshot, opportunity: TpoOpportunity): string[] {
+  if (opportunity.custom_template) return customErrors(opportunity.custom_template, details.customAnswers, snapshot);
   const errors: string[] = [];
   for (const [value, label, max] of [
     [details.tenthBoard, '10th board', 120], [details.intermediateBoard, '12th / Diploma board', 120],
