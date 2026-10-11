@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import * as XLSX from 'xlsx';
 import { db, type StudentDbRow } from './db.js';
 
-const FACULTY_SECRET = process.env.FACULTY_JWT_SECRET || '';
-const GLOBAL_FACULTY_PASS = process.env.FACULTY_PASSWORD || '';
+const getFacultySecret = () => process.env.FACULTY_JWT_SECRET || '';
+const getGlobalFacultyPass = () => process.env.FACULTY_PASSWORD || '';
 
 export interface DepartmentInfo {
   code: string;
@@ -97,13 +97,14 @@ export function getDepartmentAliases(departmentCode: string): string[] {
  */
 export function verifyFacultyCredentials(department: string, pass: string): boolean {
   const dept = DEPARTMENTS[department];
-  if (!dept || typeof pass !== 'string' || FACULTY_SECRET.length < 32) return false;
+  const secret = getFacultySecret();
+  if (!dept || typeof pass !== 'string' || secret.length < 32) return false;
   let configured: Record<string, string> = {};
   try { configured = JSON.parse(process.env.FACULTY_DEPARTMENT_PASSWORDS || '{}'); } catch { return false; }
   // Preserve existing department logins as requested by the portal owner.
   // An explicit private override replaces that department's legacy password.
   const expected = department === 'ALL'
-    ? (configured.ALL || GLOBAL_FACULTY_PASS || dept.defaultPass)
+    ? (configured.ALL || getGlobalFacultyPass() || dept.defaultPass)
     : (configured[department] || dept.defaultPass);
   if (typeof expected !== 'string' || !expected) return false;
   const actualHash = crypto.createHash('sha256').update(pass.trim()).digest();
@@ -115,14 +116,15 @@ export function verifyFacultyCredentials(department: string, pass: string): bool
  * Create signed faculty session token
  */
 export function createFacultyToken(department: string): string {
-  if (FACULTY_SECRET.length < 32 || !DEPARTMENTS[department]) throw new Error('Faculty authentication is not configured.');
+  const secret = getFacultySecret();
+  if (secret.length < 32 || !DEPARTMENTS[department]) throw new Error('Faculty authentication is not configured.');
   const payload = {
     dept: department,
     exp: Date.now() + 12 * 60 * 60 * 1000, // 12 hours
     iat: Date.now(),
   };
   const str = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = crypto.createHmac('sha256', FACULTY_SECRET).update(str).digest('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(str).digest('base64url');
   return `${str}.${sig}`;
 }
 
@@ -130,9 +132,10 @@ export function createFacultyToken(department: string): string {
  * Verify faculty session token
  */
 export function verifyFacultyToken(token: string): { dept: string } | null {
-  if (FACULTY_SECRET.length < 32 || !token || token.split('.').length !== 2) return null;
+  const secret = getFacultySecret();
+  if (secret.length < 32 || !token || token.split('.').length !== 2) return null;
   const [str, sig] = token.split('.');
-  const expectedSig = crypto.createHmac('sha256', FACULTY_SECRET).update(str).digest('base64url');
+  const expectedSig = crypto.createHmac('sha256', secret).update(str).digest('base64url');
 
   if (Buffer.byteLength(sig) !== Buffer.byteLength(expectedSig) || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
 

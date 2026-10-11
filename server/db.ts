@@ -1,7 +1,6 @@
 import pg from 'pg';
 import { randomUUID } from 'crypto';
-
-const { Pool } = pg;
+import { getSharedPool } from './db-pool.js';
 
 export interface StudentInsertData {
   firstName: string;
@@ -256,100 +255,112 @@ class MemoryDatabase {
     const record = this.otpRecords.find(r => r.id === id);
     if (record) { record.verificationToken = null; record.tokenExpiresAt = null; }
   }
+
+  async ping(): Promise<boolean> {
+    return true;
+  }
 }
 
 // PostgreSQL Implementation
-class PostgresDatabase {
+export class PostgresDatabase {
   private pool: pg.Pool;
   ready: Promise<void> = Promise.resolve();
 
-  constructor(connectionString: string) {
-    this.pool = new Pool({
-      connectionString,
-      ssl: connectionString.includes('supabase') || connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
-      max: 10,
-      idleTimeoutMillis: 30000,
-    });
+  constructor(connectionString: string, pool?: pg.Pool) {
+    this.pool = pool || getSharedPool(connectionString);
+  }
+
+  async ping(): Promise<boolean> {
+    try {
+      await this.ready;
+      const res = await this.pool.query('SELECT 1');
+      return Boolean(res.rows?.length);
+    } catch {
+      return false;
+    }
   }
 
   async initSchema(): Promise<void> {
-    const client = await this.pool.connect();
     try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS students (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          first_name VARCHAR(100) NOT NULL,
-          last_name VARCHAR(100) NOT NULL,
-          roll_number VARCHAR(30) UNIQUE NOT NULL,
-          date_of_birth DATE NOT NULL,
-          gender VARCHAR(20) NOT NULL,
-          email VARCHAR(255) NOT NULL,
-          email_verified BOOLEAN DEFAULT TRUE NOT NULL,
-          mobile_number VARCHAR(20) NOT NULL,
-          aadhar_number VARCHAR(12) NOT NULL,
-          pan_number VARCHAR(10),
-          passport_number VARCHAR(9),
-          college VARCHAR(255) NOT NULL,
-          branch VARCHAR(50) NOT NULL,
-          other_branch VARCHAR(100),
-          year_of_study VARCHAR(30),
-          cgpa NUMERIC(4, 2) NOT NULL,
-          percentage NUMERIC(5, 2) NOT NULL,
-          active_backlogs INTEGER NOT NULL DEFAULT 0,
-          intermediate_or_diploma VARCHAR(30),
-          intermediate_cgpa NUMERIC(4, 2),
-          diploma_cgpa NUMERIC(4, 2),
-          btech_year_of_passing VARCHAR(10),
-          tenth_cgpa NUMERIC(4, 2),
-          intermediate_percentage NUMERIC(5, 2),
-          diploma_percentage NUMERIC(5, 2),
-          intermediate_year_of_passing VARCHAR(10),
-          tenth_percentage NUMERIC(5, 2),
-          tenth_year_of_passing VARCHAR(10),
-          crt_registration VARCHAR(20),
-          linkedin_link VARCHAR(255),
-          resume_link VARCHAR(255),
-          github_link VARCHAR(255),
-          hackerrank_link VARCHAR(255),
-          leetcode_link VARCHAR(255),
-          codechef_link VARCHAR(255),
-          codeforces_link VARCHAR(255),
-          created_at TIMESTAMPTZ DEFAULT NOW(),
-          updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_students_roll_number ON students(roll_number);
-        CREATE INDEX IF NOT EXISTS idx_students_email ON students(email);
-        CREATE TABLE IF NOT EXISTS email_otp_verifications (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          email VARCHAR(255) NOT NULL,
-          otp_hash VARCHAR(255) NOT NULL,
-          verification_token VARCHAR(255),
-          token_expires_at TIMESTAMPTZ,
-          expires_at TIMESTAMPTZ NOT NULL,
-          attempt_count INTEGER DEFAULT 0 NOT NULL,
-          verified_at TIMESTAMPTZ,
-          created_at TIMESTAMPTZ DEFAULT NOW()
-        );
-      `);
-      
-      // Attempt to alter table if columns don't exist yet (for existing DBs)
+      const client = await this.pool.connect();
       try {
         await client.query(`
-          ALTER TABLE students 
-          ADD COLUMN IF NOT EXISTS linkedin_link VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS resume_link VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS github_link VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS hackerrank_link VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS leetcode_link VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS codechef_link VARCHAR(255),
-          ADD COLUMN IF NOT EXISTS codeforces_link VARCHAR(255);
+          CREATE TABLE IF NOT EXISTS students (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            first_name VARCHAR(100) NOT NULL,
+            last_name VARCHAR(100) NOT NULL,
+            roll_number VARCHAR(30) UNIQUE NOT NULL,
+            date_of_birth DATE NOT NULL,
+            gender VARCHAR(20) NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            email_verified BOOLEAN DEFAULT TRUE NOT NULL,
+            mobile_number VARCHAR(20) NOT NULL,
+            aadhar_number VARCHAR(12) NOT NULL,
+            pan_number VARCHAR(10),
+            passport_number VARCHAR(9),
+            college VARCHAR(255) NOT NULL,
+            branch VARCHAR(50) NOT NULL,
+            other_branch VARCHAR(100),
+            year_of_study VARCHAR(30),
+            cgpa NUMERIC(4, 2) NOT NULL,
+            percentage NUMERIC(5, 2) NOT NULL,
+            active_backlogs INTEGER NOT NULL DEFAULT 0,
+            intermediate_or_diploma VARCHAR(30),
+            intermediate_cgpa NUMERIC(4, 2),
+            diploma_cgpa NUMERIC(4, 2),
+            btech_year_of_passing VARCHAR(10),
+            tenth_cgpa NUMERIC(4, 2),
+            intermediate_percentage NUMERIC(5, 2),
+            diploma_percentage NUMERIC(5, 2),
+            intermediate_year_of_passing VARCHAR(10),
+            tenth_percentage NUMERIC(5, 2),
+            tenth_year_of_passing VARCHAR(10),
+            crt_registration VARCHAR(20),
+            linkedin_link VARCHAR(255),
+            resume_link VARCHAR(255),
+            github_link VARCHAR(255),
+            hackerrank_link VARCHAR(255),
+            leetcode_link VARCHAR(255),
+            codechef_link VARCHAR(255),
+            codeforces_link VARCHAR(255),
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_students_roll_number ON students(roll_number);
+          CREATE INDEX IF NOT EXISTS idx_students_email ON students(email);
+          CREATE TABLE IF NOT EXISTS email_otp_verifications (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            email VARCHAR(255) NOT NULL,
+            otp_hash VARCHAR(255) NOT NULL,
+            verification_token VARCHAR(255),
+            token_expires_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ NOT NULL,
+            attempt_count INTEGER DEFAULT 0 NOT NULL,
+            verified_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          );
         `);
-      } catch (e) {
-        // Ignore column exists errors
+        
+        // Attempt to alter table if columns don't exist yet (for existing DBs)
+        try {
+          await client.query(`
+            ALTER TABLE students 
+            ADD COLUMN IF NOT EXISTS linkedin_link VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS resume_link VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS github_link VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS hackerrank_link VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS leetcode_link VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS codechef_link VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS codeforces_link VARCHAR(255);
+          `);
+        } catch {
+          // Ignore column exists errors
+        }
+      } finally {
+        client.release();
       }
-      
-    } finally {
-      client.release();
+    } catch (err: any) {
+      console.warn('PostgresDatabase initSchema notice (tables likely already exist):', err?.message || err);
     }
   }
 
@@ -418,9 +429,10 @@ class PostgresDatabase {
       'first_name', 'last_name', 'roll_number', 'date_of_birth', 'gender', 'email', 
       'mobile_number', 'aadhar_number', 'pan_number', 'passport_number', 
       'college', 'branch', 'other_branch', 'cgpa', 'percentage', 'active_backlogs', 
-      'intermediate_or_diploma', 'intermediate_cgpa', 'diploma_cgpa', 
+      'intermediate_or_diploma', 'intermediate_cgpa', 'intermediate_percentage',
+      'diploma_cgpa', 'diploma_percentage', 
       'intermediate_year_of_passing', 'btech_year_of_passing', 
-      'tenth_cgpa', 'tenth_year_of_passing', 'crt_registration',
+      'tenth_cgpa', 'tenth_percentage', 'tenth_year_of_passing', 'crt_registration',
       'linkedin_link', 'resume_link', 'github_link', 'hackerrank_link',
       'leetcode_link', 'codechef_link', 'codeforces_link'
     ];
