@@ -1,3 +1,4 @@
+import { templateErrors, customErrors, type CustomTemplate } from '../src/lib/custom-tpo.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -84,6 +85,43 @@ test('TPO application lifecycle, authorization, exports and preservation on isol
     const exported = await request('GET', 'export', 'cse-test', {}, { opportunityId: se.id });
     assert.equal(exported.code, 200); assert.ok(Buffer.isBuffer(exported.data));
     assert.equal((await request('PATCH', 'review', 'ece-test', { id: verified.id, version: 4, status: 'Needs Correction', note: 'test' })).code, 409);
+    const custom: CustomTemplate = { version: 1, filename: 'Employer.xlsx', sheetName: 'Applicants', headerRow: 3, preamble: [['Employer drive'], []], columns: [
+      { header: 'S.No', source: 'serial', label: 'S.No', type: 'text', required: false, options: [] },
+      { header: 'Roll', source: 'rollNumber', label: 'Roll', type: 'text', required: true, options: [] },
+      { header: 'Gap', source: 'question', label: 'Before degree', type: 'number', required: true, options: [] },
+      { header: 'Gap', source: 'question', label: 'During degree', type: 'number', required: true, options: [] },
+      { header: 'Role', source: 'question', label: 'Role', type: 'choice', required: true, options: ['AE', 'ABA'] },
+      { header: 'Course', source: 'question', label: 'Course', type: 'text', required: false, options: [] },
+    ] };
+    assert.deepEqual(templateErrors(custom), []);
+    assert.ok(templateErrors({ ...custom, columns: [{ ...custom.columns[1], source: 'aadhar_number' }] }).length);
+    const createBody = { title: 'Custom drive', template: 'SE', deadline: '2099-01-01', customTemplate: custom };
+    assert.equal((await request('POST', 'create', 'cse-test', createBody)).code, 403);
+    assert.equal((await request('POST', 'create', 'admin-test', { ...createBody, customTemplate: { ...custom, columns: [] } })).code, 400);
+    const created = await request('POST', 'create', 'admin-test', createBody);
+    assert.equal(created.code, 201);
+    assert.deepEqual(created.data.opportunity.custom_template, custom);
+    const customId = created.data.opportunity.id;
+    const customBody = { email: 'test@example.invalid', rollNumber: '001TEST', opportunityId: customId, version: 0, details: { customAnswers: { c2: '0', c3: '1', c4: 'AE', c5: '=HYPERLINK("https://example.invalid")', injected: 'discard' } } };
+    assert.ok(customErrors(custom, { c2: 'bad', c3: '1', c4: 'wrong' }, student.snapshot).length);
+    assert.equal((await request('POST', 'submit', 'test-email-token', { ...customBody, details: {} })).code, 400);
+    const customSubmitted = await request('POST', 'submit', 'test-email-token', customBody);
+    assert.equal(customSubmitted.code, 201);
+    assert.equal(customSubmitted.data.application.details.customAnswers.injected, undefined);
+    assert.equal((await request('GET', 'export', 'admin-test', {}, { opportunityId: customId })).code, 400);
+    const customReview = await request('PATCH', 'review', 'admin-test', { id: customSubmitted.data.application.id, version: 1, status: 'Verified' });
+    assert.equal(customReview.code, 200);
+    const customExport = await request('GET', 'export', 'admin-test', {}, { opportunityId: customId });
+    assert.equal(customExport.code, 200);
+    const customBook = XLSX.read(customExport.data, { type: 'buffer' });
+    const customSheet = customBook.Sheets.Applicants;
+    assert.equal(customSheet.A1.v, 'Employer drive');
+    assert.equal(customSheet.C3.v, 'Gap'); assert.equal(customSheet.D3.v, 'Gap');
+    assert.equal(customSheet.B4.v, '001TEST'); assert.equal(customSheet.B4.t, 's');
+    assert.equal(customSheet.C4.v, 0); assert.equal(customSheet.D4.v, 1);
+    assert.equal(customSheet.F4.t, 's'); assert.equal(customSheet.F4.f, undefined);
+    assert.equal((await request('GET', 'export', 'ece-test', {}, { opportunityId: customId })).code, 400);
+    assert.equal((await request('POST', 'submit', 'test-email-token', customBody)).code, 409);
     await sql.query('UPDATE tpo_opportunities SET deadline=$1 WHERE id=$2', ['2000-01-01', ae.id]);
     const other = (await store.student('002TEST', 'other@example.invalid'))!;
     assert.equal(await store.submit(ae.id, other.id, other.snapshot, details, 0), undefined, 'closed opportunity rejects submission');
